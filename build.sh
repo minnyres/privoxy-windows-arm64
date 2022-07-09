@@ -28,5 +28,5 @@ make
 wget https://www.silvester.org.uk/privoxy/Windows/3.0.33%20%28stable%29/privoxy_3.0.33.zip
 7z x privoxy_3.0.33.zip
 cp privoxy.exe privoxy_3.0.33
-7z a -mx9 privoxy_3.0.33-windows.7z privoxy_3.0.33
+7z a -mx9 privoxy_3.0.33-WinARM64.7z privoxy_3.0.33
 mv privoxy_3.0.33-windows.7z ..
