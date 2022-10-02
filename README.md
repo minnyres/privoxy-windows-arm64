@@ -1,4 +1,4 @@
-# privoxy-woa
+# privoxy-windows-arm64
 
 [Privoxy](https://www.privoxy.org/) for Windows on ARM32/ARM64, built with LLVM/MinGW toolchain.
 
