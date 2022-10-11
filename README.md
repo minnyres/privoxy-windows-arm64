@@ -6,7 +6,7 @@ Please go to [releases](https://github.com/minnyres/privoxy-woa/releases) for th
 
 ## How to build
 
-It can be natively built on ARM Windows systems that support x64 emulation.
+It is natively built on Windows 11 ARM64.
 
 1. Install [MSYS2-64bit](https://www.msys2.org/).
 2. Enable and open the Clang ARM64 environment in MSYS2, following https://github.com/msys2/MSYS2-packages/issues/1787#issuecomment-980837586.
