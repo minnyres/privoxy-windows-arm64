@@ -1,0 +1,112 @@
+name: Build for Windows ARM64
+
+on:
+  push:
+    tags:
+    - '*'
+
+jobs:
+  build-windows-arm64:
+    name: Build
+    runs-on: ubuntu-latest
+    env:
+      llvm_path: "${{ github.workspace }}/llvm-mingw"
+      mbedtls_path: "${{ github.workspace }}/mbedtls-windows-arm64"
+      mbedtls_version: "2.28.2"
+      privoxy_version: "3.0.34"
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install tools
+        run: |
+          sudo apt update
+          sudo apt install \
+            build-essential cmake ninja-build pkg-config p7zip
+          wget https://github.com/mstorsjo/llvm-mingw/releases/download/20220906/llvm-mingw-20220906-ucrt-ubuntu-18.04-x86_64.tar.xz
+          tar -xf llvm-mingw-*.tar.xz
+          mv llvm-mingw-20220906-ucrt-ubuntu-18.04-x86_64 llvm-mingw
+          git clone https://github.com/microsoft/vcpkg.git
+          cd vcpkg
+          ./bootstrap-vcpkg.sh
+          
+      - name: Install libraries from vcpkg
+        run: |
+          PATH=$PATH:${{ env.llvm_path }}/bin
+          cd vcpkg
+          # tell vcpkg to only build Release variants of the dependencies
+          mkdir triplets_overlay
+          cp triplets/community/arm64-mingw-static.cmake triplets_overlay/arm64-mingw-static-release.cmake
+          echo "set(VCPKG_BUILD_TYPE release)" >> triplets_overlay/arm64-mingw-static-release.cmake
+          # clear buildtrees after each package installation to reduce disk space requirements
+          packages="pcre brotli zlib"
+          ./vcpkg upgrade \
+            --overlay-triplets=triplets_overlay \
+            --no-dry-run
+          ./vcpkg install \
+            --overlay-triplets=triplets_overlay \
+            --clean-after-build \
+            --triplet=arm64-mingw-static-release \
+            $packages
+          cd installed/arm64-mingw-static-release/lib
+          ln libbrotlicommon-static.a libbrotlicommon.a
+          ln libbrotlidec-static.a libbrotlidec.a
+          ln libbrotlienc-static.a libbrotlienc.a 
+          ln libzlib.a libz.a
+
+      - name: Install mbedtls
+        run: | 
+          PATH=$PATH:${{ env.llvm_path }}/bin
+          export CC="aarch64-w64-mingw32-gcc -g0 -O2 -Wno-error=implicit-function-declaration"
+          export AR=aarch64-w64-mingw32-ar
+          export WINDOWS_BUILD=1
+          git clone https://github.com/Mbed-TLS/mbedtls.git --branch v${{ env.mbedtls_version }} --depth 1
+          cd mbedtls
+          make -j$(nproc) no_test
+          make install DESTDIR=${{ env.mbedtls_path }}
+          
+      - name: Build privoxy
+        run: | 
+          PATH=$PATH:${{ env.llvm_path }}/bin 
+          wget "https://www.silvester.org.uk/privoxy/Sources/${{ env.privoxy_version }}%20%28stable%29/privoxy-${{ env.privoxy_version }}-stable-src.tar.gz"
+          tar -xf privoxy-${{ env.privoxy_version }}-stable-src.tar.gz
+          cd privoxy-${{ env.privoxy_version }}-stable
+          autoheader
+          autoconf
+          export CPPFLAGS="-I${{ github.workspace }}/vcpkg/installed/arm64-mingw-static-release/include -I${{ env.mbedtls_path }}/include"
+          export LDFLAGS="-L${{ github.workspace }}/vcpkg/installed/arm64-mingw-static-release/lib -L${{ env.mbedtls_path }}/lib"
+          ./configure --host=aarch64-w64-mingw32 --enable-mingw32 \
+              --enable-zlib --disable-pthread -with-brotli --with-mbedtls \
+              --enable-static-linking \
+              --enable-compression \
+              --enable-large-file-support \
+              --prefix=${{ github.workspace }}/upload
+          sed -i 's/-F pe-i386/ /g' GNUmakefile
+          sed -i 's/windres/aarch64-w64-mingw32-windres/g' GNUmakefile
+          sed -i 's/DWINVER=0x501/DWINVER=0x0A00/g' GNUmakefile
+          make
+
+      - name: Prepare build artifacts
+        run: |
+          PATH=$PATH:${{ env.llvm_path }}/bin 
+          mkdir upload
+          cp privoxy-${{ env.privoxy_version }}-stable/privoxy.exe upload
+          aarch64-w64-mingw32-strip upload/privoxy.exe
+          wget https://www.silvester.org.uk/privoxy/Windows/${{ env.privoxy_version }}%20%28stable%29/privoxy_${{ env.privoxy_version }}.zip
+          7z x privoxy_${{ env.privoxy_version }}.zip
+          cp upload/privoxy.exe privoxy_${{ env.privoxy_version }}
+          7z a privoxy_${{ env.privoxy_version }}_arm64.zip privoxy_${{ env.privoxy_version }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: privoxy_${{ env.privoxy_version }}_arm64
+          path: upload
+
+      - name: Batch release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: privoxy_${{ env.privoxy_version }}_arm64.zip
