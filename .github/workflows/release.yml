@@ -48,9 +48,6 @@ jobs:
             --triplet=arm64-mingw-static-release \
             $packages
           cd installed/arm64-mingw-static-release/lib
-          ln libbrotlicommon-static.a libbrotlicommon.a
-          ln libbrotlidec-static.a libbrotlidec.a
-          ln libbrotlienc-static.a libbrotlienc.a 
           ln libzlib.a libz.a
 
       - name: Install mbedtls
