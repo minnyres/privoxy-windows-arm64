@@ -10,7 +10,7 @@ jobs:
     env:
       llvm_path: "${{ github.workspace }}/llvm-mingw"
       mbedtls_path: "${{ github.workspace }}/mbedtls-windows-arm64"
-      mbedtls_version: "2.28.2"
+      mbedtls_version: "3.6.2"
       privoxy_version: "4.0.0"
     
     steps:
@@ -56,7 +56,7 @@ jobs:
           export CC="aarch64-w64-mingw32-gcc -g0 -O2 -Wno-error=implicit-function-declaration"
           export AR=aarch64-w64-mingw32-ar
           export WINDOWS_BUILD=1
-          git clone https://github.com/Mbed-TLS/mbedtls.git --branch v${{ env.mbedtls_version }} --depth 1
+          git clone https://github.com/Mbed-TLS/mbedtls.git --recurse-submodules --branch v${{ env.mbedtls_version }} --depth 1
           cd mbedtls
           make -j$(nproc) no_test
           make install DESTDIR=${{ env.mbedtls_path }}
