@@ -21,7 +21,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install \
-            build-essential cmake ninja-build pkg-config p7zip
+            build-essential cmake ninja-build pkg-config p7zip curl
           wget https://github.com/mstorsjo/llvm-mingw/releases/download/20220906/llvm-mingw-20220906-ucrt-ubuntu-18.04-x86_64.tar.xz
           tar -xf llvm-mingw-*.tar.xz
           mv llvm-mingw-20220906-ucrt-ubuntu-18.04-x86_64 llvm-mingw
@@ -88,8 +88,8 @@ jobs:
           mkdir upload
           cp privoxy-${{ env.privoxy_version }}-stable/privoxy.exe upload
           aarch64-w64-mingw32-strip upload/privoxy.exe
-          wget https://www.silvester.org.uk/privoxy/Windows/${{ env.privoxy_version }}%20%28stable%29/privoxy_${{ env.privoxy_version }}.zip
-          7z x privoxy_${{ env.privoxy_version }}.zip
+          curl -L https://sourceforge.net/projects/ijbswa/files/Win32/4.0.0%20%28stable%29/privoxy_4.0.0.zip/download -o privoxy.zip
+          7z x privoxy.zip
           cp upload/privoxy.exe privoxy_${{ env.privoxy_version }}
           7z a privoxy_${{ env.privoxy_version }}_arm64.zip privoxy_${{ env.privoxy_version }}
 
