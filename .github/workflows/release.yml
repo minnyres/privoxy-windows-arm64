@@ -9,9 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       llvm_path: "${{ github.workspace }}/llvm-mingw"
-      mbedtls_path: "${{ github.workspace }}/mbedtls-windows-arm64"
-      mbedtls_version: "3.6.2"
-      privoxy_version: "4.0.0"
+      privoxy_version: "4.1.0"
     
     steps:
       - name: Checkout repository
@@ -22,44 +20,30 @@ jobs:
           sudo apt update
           sudo apt install \
             build-essential cmake ninja-build pkg-config p7zip curl
-          wget https://github.com/mstorsjo/llvm-mingw/releases/download/20220906/llvm-mingw-20220906-ucrt-ubuntu-18.04-x86_64.tar.xz
+          wget https://github.com/mstorsjo/llvm-mingw/releases/download/20260616/llvm-mingw-20260616-ucrt-ubuntu-22.04-x86_64.tar.xz
           tar -xf llvm-mingw-*.tar.xz
-          mv llvm-mingw-20220906-ucrt-ubuntu-18.04-x86_64 llvm-mingw
-          git clone https://github.com/microsoft/vcpkg.git
-          cd vcpkg
-          ./bootstrap-vcpkg.sh
-          
-      - name: Install libraries from vcpkg
+          mv llvm-mingw-20260616-ucrt-ubuntu-22.04-x86_64 llvm-mingw
+  
+      - name: Setup a new (or from cache) vcpkg (and does not build any package)
+        uses: lukka/run-vcpkg@v11 # Always specify the specific _version_ of the
+                                  # action you need, `v11` in this case to stay up
+                                 # to date with fixes on the v11 branch
+        with:
+          vcpkgGitCommitId: '9e593bb18ea69cc5095e012465dcd675a822ed0d'
+
+      - name: Install dependencies from vcpkg
         run: |
           PATH=$PATH:${{ env.llvm_path }}/bin
-          cd vcpkg
           # tell vcpkg to only build Release variants of the dependencies
+          cd ${{ env.RUNVCPKG_VCPKG_ROOT }}
           mkdir triplets_overlay
           cp triplets/community/arm64-mingw-static.cmake triplets_overlay/arm64-mingw-static-release.cmake
           echo "set(VCPKG_BUILD_TYPE release)" >> triplets_overlay/arm64-mingw-static-release.cmake
-          # clear buildtrees after each package installation to reduce disk space requirements
-          packages="pcre brotli zlib"
-          ./vcpkg upgrade \
-            --overlay-triplets=triplets_overlay \
-            --no-dry-run
-          ./vcpkg install \
-            --overlay-triplets=triplets_overlay \
-            --clean-after-build \
-            --triplet=arm64-mingw-static-release \
-            $packages
+          packages="pcre2 brotli zlib mbedtls"
+          ./vcpkg upgrade 
+          ./vcpkg install $packages --overlay-triplets=triplets_overlay --triplet arm64-mingw-static-release --clean-after-build 
           cd installed/arm64-mingw-static-release/lib
-          ln libzlib.a libz.a
-
-      - name: Install mbedtls
-        run: | 
-          PATH=$PATH:${{ env.llvm_path }}/bin
-          export CC="aarch64-w64-mingw32-gcc -g0 -O2 -Wno-error=implicit-function-declaration"
-          export AR=aarch64-w64-mingw32-ar
-          export WINDOWS_BUILD=1
-          git clone https://github.com/Mbed-TLS/mbedtls.git --recurse-submodules --branch v${{ env.mbedtls_version }} --depth 1
-          cd mbedtls
-          make -j$(nproc) no_test
-          make install DESTDIR=${{ env.mbedtls_path }}
+          ln libzs.a libz.a
           
       - name: Build privoxy
         run: | 
@@ -69,11 +53,13 @@ jobs:
           cd privoxy-${{ env.privoxy_version }}-stable
           autoheader
           autoconf
-          export CPPFLAGS="-I${{ github.workspace }}/vcpkg/installed/arm64-mingw-static-release/include -I${{ env.mbedtls_path }}/include"
-          export LDFLAGS="-L${{ github.workspace }}/vcpkg/installed/arm64-mingw-static-release/lib -L${{ env.mbedtls_path }}/lib"
+          export CPPFLAGS="-I${{ env.RUNVCPKG_VCPKG_ROOT }}/installed/arm64-mingw-static-release/include"
+          export CFLAGS="-Wno-error=incompatible-pointer-types"
+          export LDFLAGS="-L${{ env.RUNVCPKG_VCPKG_ROOT }}/installed/arm64-mingw-static-release/lib -lbcrypt -lcrypt32"
           ./configure --host=aarch64-w64-mingw32 --enable-mingw32 \
-              --enable-zlib --disable-pthread -with-brotli --with-mbedtls \
+              --enable-zlib -with-brotli --with-mbedtls \
               --enable-static-linking \
+              --disable-pthread \
               --enable-compression \
               --enable-large-file-support \
               --prefix=${{ github.workspace }}/upload
@@ -85,19 +71,17 @@ jobs:
       - name: Prepare build artifacts
         run: |
           PATH=$PATH:${{ env.llvm_path }}/bin 
-          mkdir upload
-          cp privoxy-${{ env.privoxy_version }}-stable/privoxy.exe upload
-          aarch64-w64-mingw32-strip upload/privoxy.exe
-          curl -L https://sourceforge.net/projects/ijbswa/files/Win32/4.0.0%20%28stable%29/privoxy_4.0.0.zip/download -o privoxy.zip
+          aarch64-w64-mingw32-strip privoxy-${{ env.privoxy_version }}-stable/privoxy.exe
+          curl -L "https://www.silvester.org.uk/privoxy/Windows/${{ env.privoxy_version }}%20(stable)/privoxy_${{ env.privoxy_version }}.zip" -o privoxy.zip
           7z x privoxy.zip
-          cp upload/privoxy.exe privoxy_${{ env.privoxy_version }}
+          cp privoxy-${{ env.privoxy_version }}-stable/privoxy.exe privoxy_${{ env.privoxy_version }}
           7z a privoxy_${{ env.privoxy_version }}_arm64.zip privoxy_${{ env.privoxy_version }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: privoxy_${{ env.privoxy_version }}_arm64
-          path: upload
+          path: privoxy_${{ env.privoxy_version }}_arm64.zip
 
       - name: Batch release
         if: startsWith(github.ref, 'refs/tags/')
